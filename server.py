@@ -204,7 +204,8 @@ class Server:
             print(e)
 
     def broadcast(self,message,client_sock,course_code,user_name):        
-        
+        print("ALOINDAWOINEFAEORFNAERNFO")
+            
         try:
             for i in self.chat_details[course_code]["clients"]:
                 if(i!= client_sock):
@@ -212,6 +213,7 @@ class Server:
             self.chat_details[course_code]["messages"].append(user_name+"---->"+message)
         except Exception as e:
             print(e)
+            print("ALOINDAWOINEFAEORFNAERNFO")
             
 
     def chat_session(self,user_name,course_code,client_sock):
@@ -247,7 +249,8 @@ class Server:
         
         self.send_message("Please enter Course Code to view course details",client_sock)
         course_code = int(self.receive_message(client_sock)[0])
-        self.send_message("please enter 1 to add post and 2 to view posts and 3 to start a chat session ",client_sock)
+        self.send_message("""please enter 1 to add post and 2 to view posts and 3 to start a chat session and 4 create GD and 5 for viewing GD 
+        and 6 for private_convo""",client_sock)
         value  = int(self.receive_message(client_sock)[0])
         if(value == 1):
             self.add_post(client_sock,user_name,course_code)
@@ -256,9 +259,149 @@ class Server:
         elif(value ==3):
             # print(3,'asdasdass')
             self.chat_session(user_name,course_code,client_sock)
+        elif value==4:
+            self.create_gd(course_code,client_sock,user_name)
+        elif value==5:
+            self.view_gd_teacher(course_code,client_sock,user_name)
+        elif value==6:
+            self.teacher_private_conv(user_name,client_sock,course_code)
         self.home_teacher(user_name,client_sock)
         return 
     
+    def teacher_private_conv(self,user_name,client_sock,course_code):
+        cursor=self.conn.cursor()
+        sql='select distinct student_name from private_conv where teacher_name==? and course_code==?'
+        try:
+            cursor.execute(sql,(user_name,course_code,))
+            res=cursor.fetchall()
+            if(len(res)!=0):
+                string="choose private_conv with student from "
+                for i in res:
+                    string+=i[0]+" "
+                string+="\n"
+                self.send_message("ok",client_sock)
+                self.send_message(string,client_sock)
+            else:
+                self.send_message("nok",client_sock)
+                self.send_message("No student conversation",client_sock)
+                self.home_teacher(user_name,client_sock)
+                return
+        except Exception as e:
+            print(e)
+            self.send_message("nok",client_sock)
+            self.send_message("Not",client_sock)
+            self.home_teacher(user_name,client_sock)
+            return
+
+        student_name=self.receive_message(client_sock)[0]
+        self.send_message("Please select 1 to view message and 2 to send message",client_sock)    
+        choose=self.receive_message(client_sock)[0]
+        # print(teacher_name,type(teacher_name))
+        if choose=='1':
+            try:
+                cursor.execute("select * from private_conv where student_name==? and teacher_name == ? and course_code==?",(student_name,user_name,course_code,))
+                res=cursor.fetchall()
+                string="Message  time\n"
+                for i in res:
+                    string+=i[2]+" "+i[3]+"\n"
+                self.send_message(string,client_sock)
+            except Exception as e:
+                self.send_message("No convo",client_sock)
+                print(e)
+
+        else:
+            """insert name of sender"""
+            try:
+                msg=self.receive_message(client_sock)[0]
+                msg=f"{user_name}--->"+msg
+                cursor.execute("insert into private_conv values(?,?,?,datetime(\'now\', \'localtime\'),?)",(student_name,user_name,msg,course_code,))
+                self.conn.commit()
+                self.send_message("ok",client_sock)
+            except Exception as e:
+                self.send_message("No",client_sock)
+                print(e)
+        cursor.close()
+        self.home_teacher(user_name,client_sock)
+
+
+    def create_gd(self,course_code,client_sock,user_name):
+        sql='insert into group_discussion("topic","course_code","user_name","message","post_time") values(?,?,?,?,datetime(\'now\', \'localtime\'))'
+        temp= self.receive_message(client_sock)
+        topic=temp[0]
+        cursor=self.conn.cursor()
+        try:
+            cursor.execute("select * from group_discussion where course_code==? and topic==? and user_name==?",(course_code,topic,user_name,))
+            res=cursor.fetchall()
+            if len(res)>0:
+                self.send_message("not ok",client_sock)
+                self.send_message("Already available",client_sock)
+                self.home_teacher(user_name,client_sock)
+                return
+            cursor.execute(sql,(topic,course_code,user_name,"Created GD",))
+            self.conn.commit()
+            self.send_message("ok",client_sock)
+            self.send_message("Created GD",client_sock)
+        except Exception as E:
+            print(E)
+            self.send_message("not ok",client_sock)
+            self.send_message("Not created GD",client_sock)
+        self.home_teacher(user_name,client_sock)
+            
+
+    def view_gd_teacher(self,course_code,client_sock,user_name):
+        self.send_message("Please input topic",client_sock)
+        topic=self.receive_message(client_sock)[0]
+        cursor=self.conn.cursor()
+        try:
+            cursor.execute("select * from group_discussion where course_code==? and topic==? and user_name==?",(course_code,topic,user_name,))
+            res=cursor.fetchall()
+            if len(res)<=0:
+                self.send_message("not",client_sock)
+                self.home_teacher(user_name,client_sock)
+                return        
+        except Exception as e:
+            print(e)
+            self.send_message("not",client_sock)
+            self.home_teacher(user_name,client_sock)
+            return
+        
+        
+        self.send_message("ok",client_sock)
+        self.send_message("input 1 for viewing messages in gd and 2 for adding messages to gd",client_sock)
+        v=int(self.receive_message(client_sock)[0])
+        sql1="select user_name,message,post_time from group_discussion where course_code == ? and topic == ?"
+        sql2='insert into group_discussion("topic","course_code","user_name","message","post_time") values(?,?,?,?,datetime(\'now\', \'localtime\'))'
+        if v==1:
+            try:
+                cursor.execute(sql1,(course_code,topic,))
+                res=cursor.fetchall()
+                string = "user_name  message  post_time\n"
+                for i in res:
+                    string+=i[0]+"  "+i[1]+"  "+i[2]+"\n"
+                self.send_message(string,client_sock)
+                
+            except Exception as E:
+                print(E)
+                self.send_message("Not able to fetch",client_sock)
+            
+        elif v==2:
+            self.send_message("please type message to add to gd",client_sock)
+            temp= self.receive_message(client_sock)
+            message = temp[0]
+            try:
+                cursor.execute(sql2,(topic,course_code,user_name,message,))
+                self.conn.commit()
+                self.send_message("ok",client_sock)
+            except Exception as E:
+                print(E)
+                self.send_message("not ok",client_sock)
+            
+        cursor.close()
+        self.home_teacher(user_name,client_sock)
+        return
+
+
+
     def home_teacher(self,user_name,client_sock):
         self.send_message(f"Hi {user_name}\nPress 1 for showing existing courses\nPress 2 for creating new course \n press 3 for viewing course",client_sock)
         instruction=self.receive_message(client_sock)[0]
@@ -314,19 +457,6 @@ class Server:
         self.home_teacher(user_name,client_sock)
 
 
-    # def view_course_details(self,user_name,course_code,client_sock):
-    #     try:
-    #         cursor=self.conn.cursor()
-    #         tmp=(course_code,)
-    #         cursor.executemany(f'select * from course_post where course_code== ?',tmp)
-    #         res=cursor.fetchall()
-    #         self.send_message("".join(res),client_sock)
-    #     except:
-    #         self.send_message("Failed to fetch details of course",client_sock)
-    #     cursor.close()
-    #     self.home_student(user_name,client_sock)
-
-
     def home_student(self,user_name,client_sock):
 
         self.send_message("""Hi, welcome to the classroom\nHere you can view and enroll for courses \n 
@@ -334,42 +464,39 @@ class Server:
         input 2 for enrollig new course \n 
         input 3  for viewing updates for registered courses\n
         input 4  for viewing details of a registered course\n
-        input 5 to """,client_sock)
+        """,client_sock)
         message = self.receive_message(client_sock)[0]
         message=int(message)
-        if(message==1):
+        if message==1:
             self.view_courses_student(user_name,client_sock)
         elif message==2:
             self.enroll_course(user_name,client_sock)
         elif message==3:
             self.view_updates(user_name,client_sock)
         elif message==4:
-            self.view_course_details(user_name,client_sock)
+            self.check_course_reg(user_name,client_sock)
         else:
             self.home_student(user_name,client_sock)
-    def view_course_details(self,user_name,client_sock):
+    
+    def check_course_reg(self,user_name,client_sock):
         self.send_message("please input the registered course's code",client_sock)
         course_code=self.receive_message(client_sock)[0]
         cursor=self.conn.cursor()
-        sql1="select * from student_courses where user_name==?"
+        sql1="select course_name from student_courses where user_name==? and course_code==?"
         try:
-            cursor.execute(sql1,(user_name,))
-            res=cursor.fetchall()
-            flg=-1
-            for i in range(len(res)):
-                if(int(course_code)==res[i][1]):
-                    flg=i
-                    break
-            if flg!=-1:
-                self.send_message(f"Welcome to Course {res[i][2]} with course_code {res[i][1]}",client_sock)
-                self.all_details(user_name,client_sock,res[i][1])
+            cursor.execute(sql1,(user_name,course_code,))
+            res=cursor.fetchone()
+            if len(res):
+                self.send_message("ok",client_sock)
+                self.send_message(f"Welcome to Course {res[0]} with course_code {course_code}",client_sock)
+                self.all_details(user_name,client_sock,course_code)
             else:
+                self.send_message("not ok",client_sock)
                 self.send_message("Input correct code",client_sock)
-                self.view_course_details(user_name,client_sock)
+                self.home_student(user_name,client_sock)
             
         except Exception as e:
             print(e)
-            self.view_course_details(user_name,client_sock)
         cursor.close()
         self.home_student(user_name,client_sock)
 
@@ -377,7 +504,7 @@ class Server:
     
     def all_details(self,user_name,client_sock,course_code):
         
-        self.send_message("please select 1 for seeing posts and 2 for chat session")
+        self.send_message("please select 1 for seeing posts and 2 for GD and 3 for chat session and  4 for private conversation with teacher",client_sock)
         value = self.receive_message(client_sock)[0]
         if(int(value)==1):    
             sql1="select keyword,post_details,add_time from posts where  course_code == ?  order by add_time desc"
@@ -385,42 +512,101 @@ class Server:
             try:
                 cursor=self.conn.cursor()
                 cursor.execute(sql1,(course_code,))
-                res=cursor.fectchall()
+                res=cursor.fetchall()
                 string ="keyword  post_details  add_time\n"
                 for i in res:
-                    string+="  ".join(i) +"\n"
-                self.send_message(i,client_sock)
+                    # print(i)
+                    string+="  ".join([j for j in i]) +"\n"
+                self.send_message(string,client_sock)
 
             except Exception as e:
+                self.send_message("Not able to see post")
                 print(e)
-        elif int(value)==3:
-            self.view_gd(course_code,client_sock,user_name)
+            
         elif int(value)==2:
+            self.view_gd(course_code,client_sock,user_name)
+        elif int(value)==3:
             self.chat_session_student(user_name,course_code,client_sock)
+        elif int(value)==4:
+            self.private_conv(user_name,client_sock,course_code)
         cursor.close()
         self.home_student(user_name,client_sock)
 
-    def view_gd(self,course_code,client_sock,user_name):
-        self.send_message("Please input topic")
-        topic=self.recieve_message(client_sock)[0]
-            
-        self.send_message("input 1 for viewing messages in gd and 2 for adding messages to gd",client_sock)
-        v=int(self.recieve_message(client_sock)[0])
+    def private_conv(self,user_name,client_sock,course_code):
         cursor=self.conn.cursor()
+        try:
+            cursor.execute("select user_name from courses where course_code==?",(course_code,))
+            res=cursor.fetchone()
+            teacher_name=res[0]
+        except:
+            self.send_message("Not able to fetch teacher's name",client_sock)
+            self.home_student(user_name,client_sock)
+            return
+        self.send_message("Please select 1 to view message and 2 to send message",client_sock)    
+        choose=self.receive_message(client_sock)[0]
+        # print(teacher_name,type(teacher_name))
+        if choose=='1':
+            try:
+                cursor.execute("select * from private_conv where student_name==? and teacher_name == ? and course_code==?",(user_name,teacher_name,course_code,))
+                res=cursor.fetchall()
+                string="Message  time\n"
+                for i in res:
+                    string+=i[2]+" "+i[3]+"\n"
+                self.send_message(string,client_sock)
+            except Exception as e:
+                self.send_message("No convo",client_sock)
+                print(e)
+
+        else:
+            """insert name of sender"""
+            try:
+                msg=self.receive_message(client_sock)[0]
+                msg=f"{user_name}--->"+msg
+                cursor.execute("insert into private_conv values(?,?,?,datetime(\'now\', \'localtime\'),?)",(user_name,teacher_name,msg,course_code,))
+                self.conn.commit()
+                self.send_message("ok",client_sock)
+            except Exception as e:
+                self.send_message("No",client_sock)
+                print(e)
+        cursor.close()
+        self.home_student(user_name,client_sock)
+
+
+    def view_gd(self,course_code,client_sock,user_name):
+        self.send_message("Please input topic",client_sock)
+        topic=self.receive_message(client_sock)[0]
+        cursor=self.conn.cursor()
+        try:
+            cursor.execute("select * from group_discussion where course_code==? and topic==?",(course_code,topic,))
+            res=cursor.fetchall()
+            if len(res)<=0:
+                self.send_message("not",client_sock)
+                self.home_student(user_name,client_sock)
+                return        
+        except Exception as e:
+            print(e)
+            self.send_message("not",client_sock)
+            self.home_student(user_name,client_sock)
+            return
+        
+        
+        self.send_message("ok",client_sock)
+        self.send_message("input 1 for viewing messages in gd and 2 for adding messages to gd",client_sock)
+        v=int(self.receive_message(client_sock)[0])
         sql1="select user_name,message,post_time from group_discussion where course_code == ? and topic == ?"
         sql2='insert into group_discussion("topic","course_code","user_name","message","post_time") values(?,?,?,?,datetime(\'now\', \'localtime\'))'
         if v==1:
             try:
-                cursor.execute(sql1,(course_code,topic))
+                cursor.execute(sql1,(course_code,topic,))
                 res=cursor.fetchall()
-                string = "user_name  message  post_time"
+                string = "user_name  message  post_time\n"
                 for i in res:
-                    string+="  ".join(i) +"\n"
+                    string+=i[0]+"  "+i[1]+"  "+i[2]+"\n"
                 self.send_message(string,client_sock)
                 
             except Exception as E:
                 print(E)
-                self.send_message("No ")
+                self.send_message("Not able to fetch",client_sock)
             
         elif v==2:
             self.send_message("please type message to add to gd",client_sock)
@@ -429,26 +615,41 @@ class Server:
             try:
                 cursor.execute(sql2,(topic,course_code,user_name,message,))
                 self.conn.commit()
-                self.send_message("ok")
+                self.send_message("ok",client_sock)
             except Exception as E:
                 print(E)
-                self.send_message("not ok")
-            
+                self.send_message("not ok",client_sock)
+        
         cursor.close()
         self.home_student(user_name,client_sock)
         return
 
+
     def chat_session_student(self,user_name,course_code,client_sock):
+        course_code=int(course_code)
+        print("ahbdjsfkn")
+        
         if course_code not in self.chat_details:
+            self.send_message("nok",client_sock)
             self.send_message("No active chat session",client_sock)
         else:
+            self.send_message("ok",client_sock)
+            self.send_message("inside chat session",client_sock)
             self.chat_details[course_code]["clients"].append(client_sock)
             self.broadcast("i joined the chat session",client_sock,course_code,user_name)
             while(True):
+                print('1')
                 message = self.receive_message(client_sock)[0]
+                
                 if(message == "exit"):
                     self.broadcast("i am leaving the session",client_sock,course_code,user_name)
                     self.chat_details[course_code]["clients"].remove(client_sock)
+                elif(message == "showall"):
+                    final = ""
+                    message = self.chat_details[course_code]["messages"]
+                    for i in message:
+                        final+=i+"\n"
+                    self.send_message(final,client_sock)
                 else:
                     self.broadcast(message,client_sock,course_code,user_name)
         self.home_student(user_name,client_sock)
@@ -461,11 +662,13 @@ class Server:
             tmp=(user_name,)
             cursor.execute(sql,tmp)
             res=cursor.fetchall()
+            print(res)
             string="course_code post_details keyword add_time \n"
             for i in res:
                 string+= str(i[1])+" "+i[2]+i[3]+i[4]+"\n"
             self.send_message(string,client_sock)
-        except:
+        except Exception as e:
+            print(e)
             self.send_message("Failed to show courses",client_sock)
         cursor.close()
         self.home_student(user_name,client_sock)
